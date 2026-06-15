@@ -1,25 +1,43 @@
-"""Pydantic models describing the scanner's request and response shapes."""
+"""Request and response schemas, shared across the API and scoring layers."""
 
 from __future__ import annotations
+
+from enum import StrEnum
 
 from pydantic import BaseModel, Field, HttpUrl
 
 
+class CheckStatus(StrEnum):
+    """Outcome of evaluating a single header."""
+
+    PASS = "pass"
+    WARN = "warn"
+    FAIL = "fail"
+
+
 class ScanRequest(BaseModel):
-    """Incoming request: a single URL to inspect."""
+    """Incoming request: a single URL to inspect.
+
+    ``HttpUrl`` is the first line of defense — it rejects non-http(s) schemes
+    and malformed URLs before they ever reach the scanner.
+    """
 
     url: HttpUrl = Field(..., description="The http(s) URL whose response headers will be analyzed.")
 
 
 class HeaderFinding(BaseModel):
-    """The result of checking a single security header."""
+    """The graded result of checking one security header."""
 
     name: str
+    status: CheckStatus
     present: bool
     value: str | None = None
     severity: str = Field(..., description="Relative importance: high, medium, or low.")
+    points_awarded: int
+    points_possible: int
     description: str = Field(..., description="What the header protects against.")
-    recommendation: str = Field(..., description="Suggested value if the header is missing.")
+    recommendation: str = Field(..., description="Suggested value if missing or weak.")
+    note: str | None = Field(default=None, description="Why a present header was only partially credited.")
 
 
 class ScanResponse(BaseModel):

@@ -1,24 +1,37 @@
-"""API tests using FastAPI's TestClient with the network layer mocked out."""
+"""API tests using FastAPI's TestClient, with the fetcher injected via DI."""
 
+import pytest
 from fastapi.testclient import TestClient
 
-from app import main
+from app.api.routes import get_fetcher
 from app.main import app
-from app.scanner import ScanError, analyze_headers
+from app.scanner.fetch import FetchError, FetchResult
+from app.scanner.ssrf import SSRFError
 
 client = TestClient(app)
 
 
-def _fake_response():
-    return analyze_headers(
-        url="https://example.com",
-        final_url="https://example.com/",
-        status_code=200,
-        headers={
-            "Strict-Transport-Security": "max-age=31536000",
-            "X-Frame-Options": "DENY",
-        },
-    )
+class FakeFetcher:
+    """Stand-in fetcher: returns canned headers or raises, never hits the network."""
+
+    def __init__(self, result=None, error=None):
+        self._result = result
+        self._error = error
+
+    async def fetch(self, url):
+        if self._error is not None:
+            raise self._error
+        return self._result
+
+
+def _use_fetcher(fetcher):
+    app.dependency_overrides[get_fetcher] = lambda: fetcher
+
+
+@pytest.fixture(autouse=True)
+def _clear_overrides():
+    yield
+    app.dependency_overrides.clear()
 
 
 def test_health_endpoint():
@@ -27,18 +40,22 @@ def test_health_endpoint():
     assert response.json() == {"status": "ok"}
 
 
-def test_dashboard_is_served_at_root():
+def test_dashboard_served_at_root():
     response = client.get("/")
     assert response.status_code == 200
     assert "Security Header Scanner" in response.text
 
 
-def test_scan_happy_path(monkeypatch):
-    async def fake_scan(url, **kwargs):
-        return _fake_response()
-
-    monkeypatch.setattr(main, "scan_url", fake_scan)
-
+def test_scan_happy_path():
+    _use_fetcher(
+        FakeFetcher(
+            result=FetchResult(
+                final_url="https://example.com/",
+                status_code=200,
+                headers={"Strict-Transport-Security": "max-age=63072000", "X-Frame-Options": "DENY"},
+            )
+        )
+    )
     response = client.post("/api/scan", json={"url": "https://example.com"})
     assert response.status_code == 200
     body = response.json()
@@ -52,12 +69,20 @@ def test_scan_rejects_invalid_url():
     assert response.status_code == 422
 
 
-def test_scan_surfaces_scan_error_as_400(monkeypatch):
-    async def fake_scan(url, **kwargs):
-        raise ScanError("Refusing to scan a private, loopback, or reserved address.")
+def test_scan_rejects_non_http_scheme():
+    response = client.post("/api/scan", json={"url": "ftp://example.com"})
+    assert response.status_code == 422
 
-    monkeypatch.setattr(main, "scan_url", fake_scan)
 
+def test_scan_maps_ssrf_error_to_400():
+    _use_fetcher(FakeFetcher(error=SSRFError("Refusing to connect to blocked address 127.0.0.1.")))
     response = client.post("/api/scan", json={"url": "http://example.com"})
     assert response.status_code == 400
-    assert "Refusing to scan" in response.json()["detail"]
+    assert "blocked address" in response.json()["detail"]
+
+
+def test_scan_maps_fetch_error_to_400():
+    _use_fetcher(FakeFetcher(error=FetchError("Request to example.com failed: timeout")))
+    response = client.post("/api/scan", json={"url": "http://example.com"})
+    assert response.status_code == 400
+    assert "failed" in response.json()["detail"]
