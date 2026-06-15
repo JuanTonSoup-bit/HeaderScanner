@@ -162,13 +162,9 @@ body {
   border-radius: 8px;
 }
 
-.finding.present {
-  border-left-color: var(--low);
-}
-
-.finding.missing {
-  border-left-color: var(--high);
-}
+.finding.pass { border-left-color: var(--low); }
+.finding.warn { border-left-color: var(--medium); }
+.finding.fail { border-left-color: var(--high); }
 
 .finding-head {
   display: flex;
@@ -181,6 +177,19 @@ body {
   font-weight: 600;
 }
 
+.finding-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: 0 0 auto;
+}
+
+.points {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
 .badge {
   font-size: 0.72rem;
   text-transform: uppercase;
@@ -190,13 +199,20 @@ body {
   font-weight: 600;
 }
 
-.badge.present { background: rgba(63, 185, 80, 0.18); color: var(--low); }
-.badge.missing { background: rgba(248, 81, 73, 0.18); color: var(--high); }
+.badge.pass { background: rgba(63, 185, 80, 0.18); color: var(--low); }
+.badge.warn { background: rgba(210, 153, 34, 0.20); color: var(--medium); }
+.badge.fail { background: rgba(248, 81, 73, 0.18); color: var(--high); }
 
 .finding-desc {
   margin: 0.4rem 0 0;
   color: var(--muted);
   font-size: 0.92rem;
+}
+
+.finding-note {
+  margin: 0.4rem 0 0;
+  font-size: 0.88rem;
+  color: var(--medium);
 }
 
 .finding-detail {

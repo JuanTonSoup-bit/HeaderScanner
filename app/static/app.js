@@ -32,8 +32,10 @@ function clearChildren(node) {
 }
 
 function renderFinding(finding) {
+  const status = finding.status || (finding.present ? "pass" : "fail");
+
   const li = document.createElement("li");
-  li.className = "finding " + (finding.present ? "present" : "missing");
+  li.className = "finding " + status;
 
   const head = document.createElement("div");
   head.className = "finding-head";
@@ -42,18 +44,34 @@ function renderFinding(finding) {
   name.className = "finding-name";
   name.textContent = finding.name;
 
-  const badge = document.createElement("span");
-  badge.className = "badge " + (finding.present ? "present" : "missing");
-  badge.textContent = finding.present ? "present" : "missing";
+  const meta = document.createElement("span");
+  meta.className = "finding-meta";
 
+  const points = document.createElement("span");
+  points.className = "points";
+  points.textContent = finding.points_awarded + "/" + finding.points_possible + " pts";
+
+  const badge = document.createElement("span");
+  badge.className = "badge " + status;
+  badge.textContent = status;
+
+  meta.appendChild(points);
+  meta.appendChild(badge);
   head.appendChild(name);
-  head.appendChild(badge);
+  head.appendChild(meta);
   li.appendChild(head);
 
   const desc = document.createElement("p");
   desc.className = "finding-desc";
   desc.textContent = finding.description;
   li.appendChild(desc);
+
+  if (finding.note) {
+    const note = document.createElement("p");
+    note.className = "finding-note";
+    note.textContent = "⚠ " + finding.note;
+    li.appendChild(note);
+  }
 
   const detail = document.createElement("p");
   detail.className = "finding-detail";
@@ -82,7 +100,7 @@ function renderResults(data) {
   if (disclosures.length > 0) {
     disclosures.forEach(([key, value]) => {
       const li = document.createElement("li");
-      li.className = "finding missing";
+      li.className = "finding fail";
       const head = document.createElement("div");
       head.className = "finding-head";
       const name = document.createElement("span");
