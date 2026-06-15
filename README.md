@@ -1,48 +1,32 @@
 # Security Header Scanner
 
-A small web app that inspects a website's HTTP response headers for the security
+A web app that inspects a website's HTTP response headers for the security
 headers that matter (HSTS, CSP, X-Frame-Options, and more), grades the result
-from **A+ to F**, and explains how to fix what's missing. It ships with a
-dashboard, a REST API, and a full **DevSecOps CI/CD pipeline** that builds,
-tests, security-scans, and deploys the app to a self-hosted home server.
+from **A+ to F**, explains *why*, and tells you how to fix what's missing. It
+ships with a dashboard, a REST API, and a full **DevSecOps CI/CD pipeline** that
+lints, type-checks, tests, security-scans, and deploys the app.
 
-> Built as a portfolio project to demonstrate practical software engineering and
-> security tooling: FastAPI, Docker, automated testing, SAST, container
-> scanning, and continuous deployment.
+> A portfolio project demonstrating practical software engineering and security
+> tooling: a layered FastAPI service, hardened against SSRF, with automated
+> testing, SAST, dependency auditing, and container scanning in CI.
 
 ## Features
 
-- **Header grading** — checks HSTS, Content-Security-Policy, X-Frame-Options,
-  X-Content-Type-Options, Referrer-Policy, and Permissions-Policy, weighted by
-  severity, and flags information-disclosure headers (`Server`, `X-Powered-By`).
-- **REST API** — `POST /api/scan` returns a structured JSON report; interactive
-  docs at `/docs`.
-- **Dashboard** — a clean single-page UI for running scans in the browser.
-- **SSRF protection** — refuses to scan loopback, private, link-local, or
-  reserved addresses by default (see `app/scanner.py`).
-- **Containerized** — runs as a non-root user with a Docker health check.
+- **Value-aware grading** — doesn't just check whether a header is present, it
+  judges the value (e.g. a short HSTS `max-age` or a CSP with `unsafe-inline`
+  only earns partial credit).
+- **SSRF protection** — scheme allowlist, rejection of private/loopback/
+  link-local/reserved ranges, an explicit block on the cloud metadata endpoint,
+  per-redirect re-validation, and IP-pinned connections to close the
+  DNS-rebinding window. See [`app/scanner/ssrf.py`](app/scanner/ssrf.py).
+- **REST API** — `POST /api/scan` returns a structured JSON report. Interactive
+  OpenAPI docs at [`/docs`](http://127.0.0.1:8000/docs).
+- **Dashboard** — a clean single-page UI showing per-header pass/warn/fail.
+- **Containerized** — pinned multi-stage image, non-root user, health check.
 
-## Architecture
+## Quickstart
 
-```
-app/
-  main.py        FastAPI app: REST API + static dashboard
-  scanner.py     Network fetch (scan_url) + pure grading logic (analyze_headers)
-  models.py      Pydantic request/response models
-  static/        Dashboard (HTML/CSS/JS, no framework)
-tests/           Unit tests (grading, SSRF guard) + API tests (TestClient)
-.github/workflows/
-  ci.yml         Lint -> test -> SAST -> build -> image scan -> push to GHCR
-  codeql.yml     CodeQL static analysis
-  deploy.yml     Self-hosted deploy on the home server after CI succeeds
-```
-
-The network layer and the grading logic are deliberately separated so the
-scoring can be unit-tested without making real HTTP requests.
-
-## Run locally
-
-### With Python
+### Local (Python 3.12+)
 
 ```bash
 python -m venv .venv
@@ -51,10 +35,9 @@ pip install -r requirements-dev.txt
 uvicorn app.main:app --reload
 ```
 
-Open http://127.0.0.1:8000 for the dashboard, or http://127.0.0.1:8000/docs
-for the API.
+Dashboard at http://127.0.0.1:8000, API docs at http://127.0.0.1:8000/docs.
 
-### With Docker
+### Docker
 
 ```bash
 docker compose up --build
@@ -62,7 +45,7 @@ docker compose up --build
 
 Then open http://127.0.0.1:8080.
 
-## API
+## API example
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/scan \
@@ -75,15 +58,66 @@ curl -X POST http://127.0.0.1:8000/api/scan \
   "url": "https://example.com",
   "final_url": "https://example.com/",
   "status_code": 200,
-  "score": 47,
-  "grade": "F",
-  "headers_present": 2,
-  "headers_missing": 4,
-  "findings": [ ... ],
+  "score": 74,
+  "grade": "C",
+  "headers_present": 5,
+  "headers_missing": 1,
+  "findings": [
+    {
+      "name": "Content-Security-Policy",
+      "status": "warn",
+      "present": true,
+      "points_awarded": 10,
+      "points_possible": 20,
+      "note": "Policy allows 'unsafe-inline'/'unsafe-eval', weakening XSS protection.",
+      "...": "..."
+    }
+  ],
   "info_disclosure": { "Server": "ECS" },
   "scanned_at": "2026-06-15T17:00:00+00:00"
 }
 ```
+
+## Grading rubric
+
+Each header earns points by severity; the total (76) is normalized to 0-100,
+then 5 points are subtracted per information-disclosure header
+(`Server`, `X-Powered-By`, `X-AspNet-Version`). Defined in
+[`app/scoring/rubric.py`](app/scoring/rubric.py).
+
+| Header | Severity | Max pts | Full credit | Partial credit (warn) |
+| --- | --- | --- | --- | --- |
+| Strict-Transport-Security | high | 20 | `max-age` ≥ 180 days | present but missing/short `max-age` |
+| Content-Security-Policy | high | 20 | no `unsafe-inline`/`unsafe-eval` | allows `unsafe-inline`/`unsafe-eval` |
+| X-Frame-Options | medium | 12 | `DENY` or `SAMEORIGIN` | other value |
+| X-Content-Type-Options | medium | 12 | `nosniff` | other value |
+| Referrer-Policy | low | 6 | any policy except `unsafe-url` | `unsafe-url` |
+| Permissions-Policy | low | 6 | present | — |
+
+Letter grades: **A+** ≥ 95, **A** ≥ 90, **B** ≥ 80, **C** ≥ 70, **D** ≥ 60,
+**F** < 60.
+
+## Architecture
+
+```
+app/
+  config.py        Settings (pydantic-settings, 12-factor)
+  main.py          App factory: wires the API router + static dashboard
+  api/             Routing and dependency injection (thin)
+  scanner/
+    ssrf.py        URL/IP validation (the SSRF guard)
+    fetch.py       SSRF-safe header fetching (injectable HTTP client)
+    service.py     Orchestration: fetch -> grade
+  scoring/
+    rubric.py      The documented grading rules
+    grader.py      Pure grade_headers() — no network, no framework
+  models/          Pydantic request/response schemas
+  static/          Dashboard (HTML/CSS/JS)
+tests/             scoring, ssrf, fetch (mocked network), and API tests
+```
+
+The HTTP client is dependency-injected, so the network is fully mocked in tests.
+The grading logic is pure and importable without starting the server.
 
 ## Tests
 
@@ -91,36 +125,29 @@ curl -X POST http://127.0.0.1:8000/api/scan \
 pytest --cov=app --cov-report=term-missing
 ```
 
-## The CI/CD pipeline
+## CI/CD & security
 
-Every push and pull request to `main` runs **`ci.yml`**:
+Every push and pull request runs [`ci.yml`](.github/workflows/ci.yml) with these
+jobs in parallel, gating a final build:
 
-1. **Lint & format** — `ruff check` and `ruff format --check`.
-2. **Test** — `pytest` with coverage gated at 85%.
-3. **SAST** — `bandit` static analysis of the application code.
-4. **Build** — builds the Docker image.
-5. **Image scan** — `Trivy` fails the build on HIGH/CRITICAL CVEs.
-6. **Push** — on `main`, publishes the image to GitHub Container Registry (GHCR).
+1. **Lint & format** — `ruff`.
+2. **Type check** — `mypy`.
+3. **Tests** — `pytest` with an 85% coverage gate.
+4. **SAST** — `bandit` (fails on medium+ findings).
+5. **Dependency audit** — `pip-audit` against pinned requirements.
+6. **Build, scan & push** — builds the image, scans it with **Trivy** (fails on
+   HIGH/CRITICAL), and on `main` pushes to GitHub Container Registry.
 
-`codeql.yml` adds GitHub's CodeQL static analysis, and Dependabot keeps the
-pip, Docker, and Actions dependencies patched.
+[`codeql.yml`](.github/workflows/codeql.yml) adds CodeQL analysis, and Dependabot
+keeps pip/Docker/Actions dependencies patched.
 
-### Continuous deployment to the home server
+### Deployment
 
-`deploy.yml` triggers after CI succeeds on `main` and runs on a **self-hosted
-runner** on the home server. The cloud does the heavy lifting (build, tests,
-scans); the home server only pulls the finished image and restarts the
-container, so its compute footprint is minimal.
-
-One-time runner setup on the server:
-
-1. GitHub repo → **Settings → Actions → Runners → New self-hosted runner**, and
-   follow the steps. Give it the label `homelab`.
-2. Add a repository secret `GHCR_TOKEN` (a PAT with `read:packages`) so the
-   runner can pull the image, or make the GHCR package public.
-3. Place `docker-compose.yml` in the runner's working directory.
-
-After that, every merge to `main` automatically redeploys.
+[`deploy.yml`](.github/workflows/deploy.yml) runs after CI succeeds on `main`,
+on a **self-hosted runner** on the home server. The cloud does the heavy lifting
+(build, tests, scans); the server only pulls the finished image and restarts the
+container. The target host is never hardcoded — it is the runner itself, and the
+registry token comes from the `GHCR_TOKEN` secret.
 
 ## License
 
