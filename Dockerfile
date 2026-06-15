@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # --- Build stage: install dependencies into an isolated prefix ---
-FROM python:3.12.8-slim-bookworm AS builder
+FROM python:3.14.0-slim-bookworm AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
@@ -11,7 +11,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 # --- Runtime stage: copy only what we need, run as non-root ---
-FROM python:3.12.8-slim-bookworm AS runtime
+FROM python:3.14.0-slim-bookworm AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
