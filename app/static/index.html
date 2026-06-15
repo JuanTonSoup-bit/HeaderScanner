@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Security Header Scanner</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <main class="container">
+    <header class="masthead">
+      <h1>🛡️ Security Header Scanner</h1>
+      <p class="tagline">Audit a site's HTTP response headers and get a graded report.</p>
+    </header>
+
+    <form id="scan-form" class="scan-form" autocomplete="off">
+      <input
+        type="url"
+        id="url-input"
+        name="url"
+        placeholder="https://example.com"
+        required
+        aria-label="URL to scan"
+      />
+      <button type="submit" id="scan-button">Scan</button>
+    </form>
+
+    <p id="status" class="status" role="status"></p>
+
+    <section id="results" class="results hidden" aria-live="polite">
+      <div class="summary">
+        <div id="grade-badge" class="grade-badge">–</div>
+        <div class="summary-meta">
+          <p class="summary-url" id="summary-url"></p>
+          <p class="summary-line">
+            Score: <strong id="summary-score"></strong> / 100 &middot;
+            <span id="summary-present"></span> present &middot;
+            <span id="summary-missing"></span> missing
+          </p>
+        </div>
+      </div>
+
+      <h2>Security headers</h2>
+      <ul id="findings" class="findings"></ul>
+
+      <section id="disclosure-section" class="disclosure hidden">
+        <h2>Information disclosure</h2>
+        <p class="disclosure-note">These headers reveal implementation details and are best removed.</p>
+        <ul id="disclosure-list" class="disclosure-list"></ul>
+      </section>
+    </section>
+
+    <footer class="footer">
+      <p>Built by Juan Abreu &middot; FastAPI + Docker + GitHub Actions</p>
+    </footer>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

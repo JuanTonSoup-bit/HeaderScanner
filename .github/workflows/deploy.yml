@@ -1,0 +1,32 @@
+name: Deploy
+
+# Runs only after CI succeeds on main. Executes on a self-hosted runner that
+# lives on the home server, so it can pull the freshly built image and restart
+# the container in place.
+on:
+  workflow_run:
+    workflows: [ "CI" ]
+    types: [ completed ]
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: [ self-hosted, homelab ]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
+
+      - name: Pull the latest image
+        run: docker compose pull
+
+      - name: Restart the service
+        run: docker compose up -d
+
+      - name: Remove dangling images
+        run: docker image prune -f

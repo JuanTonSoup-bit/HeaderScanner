@@ -1,0 +1,13 @@
+# Used both for local runs (`docker compose up --build`) and for deployment on
+# the home server, where the pipeline pulls the prebuilt image from GHCR.
+services:
+  scanner:
+    image: ghcr.io/juantonsoup-bit/security-header-scanner:latest
+    build: .
+    container_name: security-header-scanner
+    ports:
+      - "8080:8000"
+    environment:
+      # Set to "true" only if you intend to scan hosts on your own network.
+      - ALLOW_PRIVATE_TARGETS=false
+    restart: unless-stopped

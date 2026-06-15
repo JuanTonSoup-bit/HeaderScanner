@@ -1,0 +1,24 @@
+[project]
+name = "security-header-scanner"
+version = "1.0.0"
+description = "Audit a website's HTTP security headers and return a graded report."
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["app/__init__.py"]
+
+[tool.bandit]
+exclude_dirs = ["tests"]
