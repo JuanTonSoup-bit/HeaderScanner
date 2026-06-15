@@ -2,7 +2,7 @@
 # the home server, where the pipeline pulls the prebuilt image from GHCR.
 services:
   scanner:
-    image: ghcr.io/juantonsoup-bit/security-header-scanner:latest
+    image: ghcr.io/juantonsoup-bit/headerscanner:latest
     build: .
     container_name: security-header-scanner
     ports:

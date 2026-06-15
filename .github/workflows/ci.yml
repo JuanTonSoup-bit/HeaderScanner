@@ -10,28 +10,44 @@ permissions:
   contents: read
 
 jobs:
-  lint-test:
-    name: Lint & test
+  lint:
+    name: Lint & format
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-
-      - name: Install dependencies
-        run: pip install -r requirements-dev.txt
-
-      - name: Lint (ruff)
+      - run: pip install -r requirements-dev.txt
+      - name: Ruff lint
         run: ruff check .
-
-      - name: Format check (ruff)
+      - name: Ruff format check
         run: ruff format --check .
 
-      - name: Run tests with coverage
+  typecheck:
+    name: Type check (mypy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: mypy app
+
+  test:
+    name: Tests & coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: Pytest with coverage gate
         run: pytest --cov=app --cov-report=term-missing --cov-fail-under=85
 
   sast:
@@ -39,21 +55,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Install bandit
-        run: pip install bandit==1.8.0
-
-      - name: Run bandit
+          cache: pip
+      - run: pip install bandit==1.8.0
+      - name: Bandit scan (fail on medium+ severity)
         run: bandit -r app -ll
+
+  audit:
+    name: Dependency audit (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install pip-audit==2.7.3
+      - name: Audit pinned dependencies
+        run: pip-audit -r requirements.txt
 
   build-scan-push:
     name: Build, scan & push image
-    needs: [lint-test, sast]
+    needs: [lint, typecheck, test, sast, audit]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -69,12 +94,12 @@ jobs:
         with:
           context: .
           load: true
-          tags: security-header-scanner:ci
+          tags: header-scanner:ci
 
       - name: Scan image for vulnerabilities (Trivy)
         uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: security-header-scanner:ci
+          image-ref: header-scanner:ci
           format: table
           exit-code: "1"
           severity: HIGH,CRITICAL
