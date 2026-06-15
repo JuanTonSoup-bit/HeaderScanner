@@ -1,19 +1,27 @@
 # syntax=docker/dockerfile:1
-FROM python:3.12-slim
+
+# --- Build stage: install dependencies into an isolated prefix ---
+FROM python:3.12.8-slim-bookworm AS builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+# --- Runtime stage: copy only what we need, run as non-root ---
+FROM python:3.12.8-slim-bookworm AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Install dependencies first so the layer caches across code changes.
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy the application code.
+# Installed packages from the build stage (site-packages + console scripts).
+COPY --from=builder /install /usr/local
 COPY app ./app
 
-# Run as an unprivileged user.
 RUN useradd --create-home --uid 1000 appuser \
     && chown -R appuser:appuser /app
 USER appuser
